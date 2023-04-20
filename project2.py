@@ -14,7 +14,7 @@ from nltk.corpus import stopwords
 import pandas as pd
 import gc
 import pickle
-
+import argparse
 
 nltk.download('stopwords')
 nltk.download('punkt')
@@ -100,10 +100,15 @@ def dict_to_vect(d, tv):
 
 
 def main():
-   with open('yummly.json', 'r') as file:
-      data = json.load(file)
 
-   print(len(data))
+   parser = argparse.ArgumentParser()
+   parser.add_argument("--N")
+   parser.add_argument("--ingredient", action='append')
+   args = parser.parse_args()
+
+   loi = "".join(args.ingredient)
+   list_of_ingredients = []
+   list_of_ingredients.append(loi)
 
 
 
@@ -124,8 +129,7 @@ def main():
      print('Model has been saved! You can now skip the training, and use the model for future use')
 
 
-   X = ["soy sauce noodles sesame seeds chicken"]
-   tv_x = tv.transform(X)
+   tv_x = tv.transform(list_of_ingredients)
    x1 = tv_x.toarray()
    y1 = 'italian'
    y_pred = km.predict(x1)
