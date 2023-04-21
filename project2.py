@@ -15,6 +15,7 @@ import pandas as pd
 import gc
 import pickle
 import argparse
+import pandas as pd
 
 nltk.download('stopwords')
 nltk.download('punkt')
@@ -55,13 +56,10 @@ def pull_key(d):
 
 ###########################################
 
-
-
 def make_model():
    with open('yummly.json', 'r') as file:
       data = json.load(file)
-
-   sub = data[0:30000]
+   sub = data[0:35000]
    categories, ingredients = pull_keys(sub)
    X = [" ".join(x) for x in ingredients]
    tv = TfidfVectorizer(ngram_range=(1,2))
@@ -70,17 +68,33 @@ def make_model():
 
    X = tv_x
    y = categories
-   X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = 0)
-   #train, test = train_test_split(df, test_size=0.2)
-
-   km = KMeans(n_clusters = 20, random_state = 0, n_init = 'auto').fit(X_train)
-   print(km.labels_)
+   km = KMeans(n_clusters = 20, random_state = 0, n_init = 'auto').fit(X)
+   print(len(km.labels_))
 
    return km, tv
 
 ###########################################
 
+def make_df():
+   with open('yummly.json', 'r') as file:
+      data = json.load(file)
 
+   categories = []
+   ingredients = []
+   id = []
+   for d in data:
+     for key, value in d.items():
+       if key == 'cuisine':
+         categories.append(value)
+       elif key == 'ingredients':
+         ingredients.append(value)
+       elif key == 'id':
+         id.append(value)
+
+   df = pd.DataFrame(data=categories)
+   return df
+
+###########################################
 def dict_to_vect(d, tv):
   categories, ingredients = pull_key(d)
   for i in ingredients:
@@ -111,6 +125,7 @@ def main():
    list_of_ingredients.append(loi)
 
 
+   df = make_df()
 
    try:
      km = pickle.load(open("km_model.pickle", 'rb'))
@@ -142,18 +157,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
