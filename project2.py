@@ -1,10 +1,12 @@
 #! pip install scikit-learn
 import sklearn
-from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, recall_score, ConfusionMatrixDisplay
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, recall_score, Confusion>
 from sklearn.model_selection import RandomizedSearchCV, train_test_split
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import CountVectorizer
 import numpy as np
 import json
 import re
@@ -16,11 +18,12 @@ import gc
 import pickle
 import argparse
 import pandas as pd
+from numpy import dot
+from numpy.linalg import norm
 
 nltk.download('stopwords')
 nltk.download('punkt')
 stop_words = set(stopwords.words('english'))
-
 
 ###########################################
 
@@ -56,6 +59,7 @@ def pull_key(d):
 
 ###########################################
 
+# Returns the model and vectorizer
 def make_model():
    with open('yummly.json', 'r') as file:
       data = json.load(file)
@@ -68,13 +72,14 @@ def make_model():
 
    X = tv_x
    y = categories
-   km = KMeans(n_clusters = 20, random_state = 0, n_init = 'auto').fit(X)
-   print(len(km.labels_))
+   rf = RandomForestClassifier(n_estimators=100)
+   rf.fit(X, y)
 
-   return km, tv
+   return rf, tv
 
 ###########################################
 
+# Returns a datafram with cuisine, id, and ingredients
 def make_df():
    with open('yummly.json', 'r') as file:
       data = json.load(file)
@@ -91,15 +96,17 @@ def make_df():
        elif key == 'id':
          id.append(value)
 
-   df = pd.DataFrame(data=categories)
+   df = pd.DataFrame()
+   df['cuisine'] = categories
+   df['id'] = id
+   df['ingredients'] = ingredients
    return df
 
 ###########################################
+
+# Takes ingredients and vectorizes them
 def dict_to_vect(d, tv):
   categories, ingredients = pull_key(d)
-  for i in ingredients:
-    print(i)
-  print(categories)
   X = [" ".join(x) for x in ingredients]
 
   tv_x = tv.transform(X)
@@ -108,52 +115,107 @@ def dict_to_vect(d, tv):
 
   return tv_x, y
 
+###########################################
+
+# I could not get the cosine similarity to work
+# So i made my own
+def homemade_cosine_similarity(a,b):
+   cos_sim = dot(a, b)/(norm(a)*norm(b))
+   return cos_sim
+
+
+###########################################
+
+# This function prints out all of the results
+def print_results(df, pred, list_of_ingredients, N, score):
+   pred_df = df[df['cuisine'] == pred[0]]
+   ing = pred_df['ingredients'].tolist()
+
+   X = [" ".join(x) for x in ing]
+
+   cv = CountVectorizer()
+   cv_matrix = cv.fit_transform(X)
+   cv_array = cv_matrix.toarray()
+
+   target = cv.transform(list_of_ingredients)
+   target_array = target.toarray()
+   target_array = np.squeeze(np.asarray(target_array))
+
+   scores = []
+
+
+   for i in cv_matrix:
+      comp = i.toarray()
+      comp = np.squeeze(np.asarray(comp))
+      scores.append(homemade_cosine_similarity(target_array, comp))
+
+
+   pred_df['score'] = scores
+   sorted_df = pred_df.sort_values('score', ascending = False)
+   top_n = sorted_df.iloc[:N]
+
+   print('{')
+   print('   cuisine:', pred)
+   print('   score:', score)
+   print('   closest: [')
+
+   for index, row in top_n.iterrows():
+      print('     {')
+      print('       id:', row['id'])
+      print('       score:', row['score'])
+      print('     },')
+   print('   ]')
+   print('}')
+
 
 ###########################################
 ###########################################
-
 
 def main():
-
+   #Parsing the arguments given in the command line
    parser = argparse.ArgumentParser()
    parser.add_argument("--N")
    parser.add_argument("--ingredient", action='append')
    args = parser.parse_args()
 
-   loi = "".join(args.ingredient)
+   N = int(args.N)
+   loi = " ".join(args.ingredient)
    list_of_ingredients = []
    list_of_ingredients.append(loi)
 
-
+   #Making dataframe to store constructed data
    df = make_df()
 
+   #The program will try to load existing models in the local folder
    try:
-     km = pickle.load(open("km_model.pickle", 'rb'))
+     rf = pickle.load(open("rf_model.pickle", 'rb'))
      tv = pickle.load(open("vec.pickle", 'rb'))
      print('Model loaded successfully!')
 
+   # If the model is not in the local folder, then a new model will be made
+   # This will take about 20 minutes
    except:
-     print('Could not load model...   :(')
-     km, tv = make_model()
-     print("Model has been created")
+     print('The model could not be loaded.')
+     print('A new model will be made, and saved for future use.')
+     print('Please allow 20 minutes for the model to be made.')
 
-     km_model = 'km_model.pickle'
+     # Make model and vectorizer
+     rf, tv = make_model()
+     rf_model = 'rf_model.pickle'
      vec = 'vec.pickle'
-     pickle.dump(km, open(km_model, 'wb'))
+     # Save model for future use
+     pickle.dump(rf, open(rf_model, 'wb'))
      pickle.dump(tv, open(vec, 'wb'))
-     print('Model has been saved! You can now skip the training, and use the model for future use')
 
-
+   # Transform the list of ingredients given by the user
    tv_x = tv.transform(list_of_ingredients)
    x1 = tv_x.toarray()
-   y1 = 'italian'
-   y_pred = km.predict(x1)
 
-   print("y_pred1: ", y_pred)
-   print("actual1: ", y1)
-
-
-
+   # Predict and print results
+   pred = rf.predict(x1)
+   scores = rf.predict_proba(x1)
+   score = np.max(scores)
+   print_results(df, pred, list_of_ingredients, N, score)
 
 if __name__ == "__main__":
     main()
